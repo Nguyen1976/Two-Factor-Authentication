@@ -13,5 +13,8 @@ Router.route('/:id/logout')
 Router.route('/:id')
   .get(userController.getUser)
 
+Router.route('/:id/get_2fa_qr_code') //Để lấy qr code cho xác thực 2 lớp
+  .get(userController.get2FA_QRCode)
+
 
 export const userRoute = Router

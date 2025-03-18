@@ -1,10 +1,17 @@
 // Author: TrungQuanDev | https://youtube.com/@trungquandev
 import { StatusCodes } from 'http-status-codes'
 import { pickUser } from '~/utils/formatters'
+import { authenticator } from 'otplib'
+import QRCode from 'qrcode'
 
 // LƯU Ý: Trong ví dụ về xác thực 2 lớp Two-Factor Authentication (2FA) này thì chúng ta sẽ sử dụng nedb-promises để lưu và truy cập dữ liệu từ một file JSON. Coi như file JSON này là Database của dự án.
 const Datastore = require('nedb-promises')
 const UserDB = Datastore.create('src/database/users.json')
+const TwoFactorSecretKeyDB = Datastore.create(
+  'src/database/2fa_secret_keys.json'
+)
+
+const SERVICE_NAME = '2FA' //Tên này sẽ hiện thị ra khi dùng app để quét qr thường là tên của dự án
 
 const login = async (req, res) => {
   try {
@@ -58,8 +65,45 @@ const logout = async (req, res) => {
   }
 }
 
+const get2FA_QRCode = async (req, res) => {
+  try {
+    const user = await UserDB.findOne({ _id: req.params.id })
+    if (!user) {
+      res.status(StatusCodes.NOT_FOUND).json({ message: 'User not found!' })
+      return
+    }
+
+    let twoFactorSecretKeyKeyValue = null
+
+    const twoFactorSecretKey = await TwoFactorSecretKeyDB.findOne({
+      user_id: user._id
+    })
+    if (!twoFactorSecretKey) {
+      //Nếu chưa có secretKey của user thì tạo mới
+      let newTwoFactorSecretKey = await TwoFactorSecretKeyDB.insert({
+        user_id: user._id,
+        value: authenticator.generateSecret() //Đây là mã secret key nó sẽ là random nhưng phải random theo một cái chuẩn của otplib
+      })
+      twoFactorSecretKeyKeyValue = newTwoFactorSecretKey.value
+    } else {
+      //Ngược lại user có rồi lấy ra sử dụng luôn
+      twoFactorSecretKeyKeyValue = twoFactorSecretKey.value
+    }
+    const otpAuthToken = await authenticator.keyuri(
+      user.username,
+      SERVICE_NAME,
+      twoFactorSecretKeyKeyValue
+    )
+    const QRCodeImageUrl = await QRCode.toDataURL(otpAuthToken)
+    res.status(StatusCodes.OK).json({ qrcode: QRCodeImageUrl })
+  } catch (error) {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(error)
+  }
+}
+
 export const userController = {
   login,
   getUser,
-  logout
+  logout,
+  get2FA_QRCode
 }
