@@ -8,10 +8,10 @@ import SecurityIcon from "@mui/icons-material/Security";
 import CancelIcon from "@mui/icons-material/Cancel";
 import TextField from "@mui/material/TextField";
 import Button from "@mui/material/Button";
-import { get2FA_QRCodeAPI } from "~/apis";
+import { get2FA_QRCodeAPI, setup2FA_API } from "~/apis";
 
 // Tài liệu về Material Modal rất dễ ở đây: https://mui.com/material-ui/react-modal/
-function Setup2FA({ isOpen, toggleOpen, user }) {
+function Setup2FA({ isOpen, toggleOpen, user, handleSuccessSetup2FA }) {
   const [otpToken, setConfirmOtpToken] = useState("");
   const [error, setError] = useState(null);
   const [qrCodeImageUrl, setQrCodeImageUrl] = useState(null);
@@ -35,8 +35,15 @@ function Setup2FA({ isOpen, toggleOpen, user }) {
       toast.error(errMsg);
       return;
     }
-    console.log("handleConfirmSetup2FA > otpToken: ", otpToken);
+    // console.log("handleConfirmSetup2FA > otpToken: ", otpToken);
     // Call API here
+    setup2FA_API(user._id, otpToken).then(user => {
+      //Gọi lên component cha dashboard để xử lý tiếp khi thành công
+      handleSuccessSetup2FA(user)
+
+      toast.success('2FA Setup Successfully')
+      setError(null)
+    })
   };
 
   return (

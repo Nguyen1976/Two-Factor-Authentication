@@ -123,15 +123,18 @@ const setup2FA = async (req, res) => {
 
     //Nếu user có secret key thì sẽ kiểm tra otp token từ client gửi lên
     const clientOtpToken = req.body.otpToken
-
+    
     //verify tokentừ otp ở client quét được và value trong bảng 2fe secret key
-    const isValid = authenticator.verify({
+    const isValid = await authenticator.verify({
       token: clientOtpToken,
-      secret: twoFactorSecretKey
+      secret: twoFactorSecretKey.value
     })
 
+    
+
+
     if(!isValid) {
-      res.status(StatusCodes.NOT_FOUND).json({ message: 'Invalid OTP Token' })
+      res.status(StatusCodes.NOT_ACCEPTABLE).json({ message: 'Invalid OTP Token' })
       return
     }
     //Sau khi xác thực 2FA thành công
