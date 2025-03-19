@@ -180,24 +180,86 @@ const setup2FA = async (req, res) => {
       { returnUpdatedDocs: true }//return kết quả đã update thành công
     )
 
-    UserDB.compactDatafileAsync()
 
     //Lúc này tùy vào sepec dự án sẽ dữ phiên đăng nhập hợp lệ cho user, hoặc yêu cầu bắt buộc user phải đăng nhập lại. Tùy nhu cầu
     //Ở đây là vấn giữ phiên đăng nhập hợp lệ cho user giống như google họ làm
     //hoặc user đang đăng nhập trên 1 device khác thì mới yêu cầu 2fe
 
     //Vì user lúc này mới bật 2fa lên chúng ta tạo một phiên đăng nhập  mới dựa vào triunfh duyệt hiện tại
-    const newUserSession = await UserSessionDB.insert({
-      user_id: user._id,
-      device_id: req.headers['user-agent'], //Lấy user-agent từ req header để định danh trình duyệt của user
-      is_2fa_verified: true, //Xác thực là 1 phiên hợp lệ
-      last_login: new Date().valueOf()
-    })
+    // const newUserSession = await UserSessionDB.insert({
+    //   user_id: user._id,
+    //   device_id: req.headers['user-agent'], //Lấy user-agent từ req header để định danh trình duyệt của user
+    //   is_2fa_verified: true, //Xác thực là 1 phiên hợp lệ
+    //   last_login: new Date().valueOf()
+    // })
 
+    const updatedUserSession = await UserSessionDB.update(
+      {
+        user_id: user._id,
+        device_id: req.headers['user-agent']
+      },
+      { $set: { is_2fa_verified: true } },
+      { returnUpdatedDocs: true }
+    )
+
+    UserDB.compactDatafileAsync()
     res.status(StatusCodes.OK).json({
       ...pickUser(updateduser),
-      is_2fa_verified: newUserSession.is_2fa_verified,
-      last_login: newUserSession.last_login
+      is_2fa_verified: updatedUserSession.is_2fa_verified,
+      last_login: updatedUserSession.last_login
+    })
+  } catch (error) {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(error)
+  }
+}
+
+const verify2FA = async (req, res) => {
+  try {
+    const user = await UserDB.findOne({ _id: req.params.id })
+    if (!user) {
+      res.status(StatusCodes.NOT_FOUND).json({ message: 'User not found!' })
+      return
+    }
+
+    //Lấy secretKey của user từ bảng 2fa secret
+    const twoFactorSecretKey = await TwoFactorSecretKeyDB.findOne({
+      user_id: user._id
+    })
+    if (!twoFactorSecretKey) {
+      res.status(StatusCodes.NOT_FOUND).json({ message: 'Two-Factor Secret Key not found!' })
+      return
+    }
+
+    //Nếu user có secret key thì sẽ kiểm tra otp token từ client gửi lên
+    const clientOtpToken = req.body.otpToken
+
+    //verify tokentừ otp ở client quét được và value trong bảng 2fe secret key
+    const isValid = await authenticator.verify({
+      token: clientOtpToken,
+      secret: twoFactorSecretKey.value
+    })
+
+    if (!isValid) {
+      res.status(StatusCodes.NOT_ACCEPTABLE).json({ message: 'Invalid OTP Token' })
+      return
+    }
+
+    //Nếu otp token hợp lệ thì cập nhật phiên đăgn nhập hợp lệ cho user
+    const updatedUserSession = await UserSessionDB.update(
+      {
+        user_id: user._id,
+        device_id: req.headers['user-agent']
+      },
+      { $set: { is_2fa_verified: true } },
+      { returnUpdatedDocs: true }
+    )
+
+    UserSessionDB.compactDatafileAsync()
+
+    res.status(StatusCodes.OK).json({
+      ...pickUser(user),
+      is_2fa_verified: updatedUserSession.is_2fa_verified,
+      last_login: updatedUserSession.last_login
     })
   } catch (error) {
     res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(error)
@@ -209,5 +271,6 @@ export const userController = {
   getUser,
   logout,
   get2FA_QRCode,
-  setup2FA
+  setup2FA,
+  verify2FA
 }
